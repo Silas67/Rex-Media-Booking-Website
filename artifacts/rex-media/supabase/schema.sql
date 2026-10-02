@@ -41,8 +41,16 @@ create table if not exists public.bookings (
     check (payment_status in ('unpaid', 'paid')),
   booking_status text not null default 'pending'
     check (booking_status in ('pending', 'confirmed', 'cancelled')),
+  email_confirmation_token_hash text,
+  email_confirmation_claimed_at timestamptz,
+  email_confirmation_sent_at timestamptz,
   created_at timestamptz not null default now()
 );
+
+alter table public.bookings
+  add column if not exists email_confirmation_token_hash text,
+  add column if not exists email_confirmation_claimed_at timestamptz,
+  add column if not exists email_confirmation_sent_at timestamptz;
 
 create table if not exists public.booking_months (
   booking_id uuid not null references public.bookings(id) on delete cascade,
@@ -148,6 +156,7 @@ declare
   selected_month_count integer;
   distinct_month_count integer;
   selected_month date;
+  confirmation_token text;
 begin
   if month_starts is null or cardinality(month_starts) < 1
     or cardinality(month_starts) > 12 then
@@ -182,6 +191,10 @@ begin
     raise exception 'The selected screen section is not available.';
   end if;
 
+  confirmation_token :=
+    replace(gen_random_uuid()::text, '-', '') ||
+    replace(gen_random_uuid()::text, '-', '');
+
   if length(trim(company_name)) not between 1 and 180
     or length(trim(contact_person)) not between 1 and 140
     or length(trim(phone)) not between 5 and 40
@@ -194,10 +207,12 @@ begin
 
   insert into public.bookings (
     section_key, company_name, contact_person, phone, email,
-    creative_path, creative_filename, monthly_price_ngn, total_price_ngn
+    creative_path, creative_filename, monthly_price_ngn, total_price_ngn,
+    email_confirmation_token_hash
   ) values (
     section_key, trim(company_name), trim(contact_person), trim(phone), lower(trim(email)),
-    creative_path, trim(creative_filename), rate_ngn, rate_ngn * selected_month_count
+    creative_path, trim(creative_filename), rate_ngn, rate_ngn * selected_month_count,
+    md5(confirmation_token)
   )
   returning id into booking_uuid;
 
@@ -208,12 +223,125 @@ begin
 
   return jsonb_build_object(
     'booking_id', booking_uuid,
-    'total_price_ngn', rate_ngn * selected_month_count
+    'total_price_ngn', rate_ngn * selected_month_count,
+    'confirmation_token', confirmation_token
   );
 exception
   when unique_violation then
     raise exception 'One or more selected months were just booked. Refresh availability and try again.'
       using errcode = '23505';
+end;
+$$;
+
+create or replace function public.claim_booking_confirmation_email(
+  booking_id uuid,
+  confirmation_token text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  receipt jsonb;
+  claim_state record;
+begin
+  if confirmation_token !~ '^[0-9a-f]{64}$' then
+    return null;
+  end if;
+
+  update public.bookings as b
+  set email_confirmation_claimed_at = now()
+  where b.id = booking_id
+    and b.email_confirmation_token_hash = md5(confirmation_token)
+    and b.email_confirmation_sent_at is null
+    and (
+      b.email_confirmation_claimed_at is null
+      or b.email_confirmation_claimed_at < now() - interval '5 minutes'
+    )
+  returning jsonb_build_object(
+    'booking_id', b.id,
+    'company_name', b.company_name,
+    'contact_person', b.contact_person,
+    'email', b.email,
+    'screen_name', (
+      select s.name
+      from public.screen_sections as s
+      where s.key = b.section_key
+    ),
+    'months', coalesce((
+      select jsonb_agg(to_char(bm.month_start, 'FMMonth YYYY') order by bm.month_start)
+      from public.booking_months as bm
+      where bm.booking_id = b.id
+    ), '[]'::jsonb),
+    'total_price_ngn', b.total_price_ngn
+  ) into receipt;
+
+  if receipt is not null then
+    return receipt;
+  end if;
+
+  select b.email_confirmation_claimed_at as claimed_at,
+         b.email_confirmation_sent_at as sent_at
+    into claim_state
+    from public.bookings as b
+    where b.id = booking_id
+      and b.email_confirmation_token_hash = md5(confirmation_token);
+
+  if not found then
+    return null;
+  end if;
+
+  if claim_state.sent_at is not null then
+    return jsonb_build_object('already_sent', true);
+  end if;
+
+  if claim_state.claimed_at is not null then
+    return jsonb_build_object('in_progress', true);
+  end if;
+
+  return null;
+end;
+$$;
+
+create or replace function public.release_booking_confirmation_email(
+  booking_id uuid,
+  confirmation_token text
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.bookings as b
+  set email_confirmation_claimed_at = null
+  where b.id = booking_id
+    and b.email_confirmation_token_hash = md5(confirmation_token)
+    and b.email_confirmation_sent_at is null;
+
+  return found;
+end;
+$$;
+
+create or replace function public.mark_booking_confirmation_email_sent(
+  booking_id uuid,
+  confirmation_token text
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.bookings as b
+  set email_confirmation_sent_at = now(),
+      email_confirmation_claimed_at = null
+  where b.id = booking_id
+    and b.email_confirmation_token_hash = md5(confirmation_token)
+    and b.email_confirmation_sent_at is null;
+
+  return found;
 end;
 $$;
 
@@ -223,6 +351,13 @@ revoke all on function public.create_booking(
 grant execute on function public.create_booking(
   text, date[], text, text, text, text, text, text
 ) to anon, authenticated;
+
+revoke all on function public.claim_booking_confirmation_email(uuid, text) from public;
+grant execute on function public.claim_booking_confirmation_email(uuid, text) to anon, authenticated;
+revoke all on function public.release_booking_confirmation_email(uuid, text) from public;
+grant execute on function public.release_booking_confirmation_email(uuid, text) to anon, authenticated;
+revoke all on function public.mark_booking_confirmation_email_sent(uuid, text) from public;
+grant execute on function public.mark_booking_confirmation_email_sent(uuid, text) to anon, authenticated;
 
 insert into storage.buckets (
   id, name, public, file_size_limit, allowed_mime_types

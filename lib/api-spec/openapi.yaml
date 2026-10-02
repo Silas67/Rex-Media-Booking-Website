@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: booking
+    description: Booking email notifications
 paths:
   /healthz:
     get:
@@ -24,6 +26,54 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /booking-confirmation:
+    post:
+      operationId: sendBookingConfirmation
+      tags: [booking]
+      summary: Send the confirmation email for a saved booking
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BookingConfirmationRequest"
+      responses:
+        "200":
+          description: Confirmation email accepted by the email provider
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookingConfirmationSent"
+        "400":
+          description: Invalid booking confirmation request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: Booking receipt token is invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: Confirmation is already being sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "502":
+          description: Email delivery failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "503":
+          description: Email or booking-service configuration is missing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +83,32 @@ components:
           type: string
       required:
         - status
+    BookingConfirmationRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        bookingId:
+          type: string
+          format: uuid
+        confirmationToken:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+          minLength: 64
+          maxLength: 64
+      required: [bookingId, confirmationToken]
+    BookingConfirmationSent:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum: [sent]
+      required: [status]
+    ApiError:
+      type: object
+      additionalProperties: false
+      properties:
+        error:
+          type: string
+      required: [error]
 

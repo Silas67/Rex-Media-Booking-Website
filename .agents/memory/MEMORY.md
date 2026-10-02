@@ -1,0 +1,1 @@
+- [Supabase ownership](supabase-ownership.md) — Rex Media uses the user's own Supabase project; provide schema and environment setup rather than provisioning another database.

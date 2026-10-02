@@ -1,0 +1,50 @@
+create this simple website - # Rex Media — Website Design Brief
+
+## Purpose
+A booking website for Rex Media, an indoor LED advertising agency. Companies should be able to browse available screen sections, check pricing, and book ad slots without calling in.
+
+## Core Pages
+
+**1. Home**
+- Rex Media brand name/logo, one-line pitch ("Indoor LED advertising inside [resort name]")
+- Photos/video of the 4 LED screens in context (live band, DJ, lounge x2)
+- CTA button: "Book a Screen"
+
+**2. Screens & Pricing**
+List each section as a card:
+- Live Band LED — ₦800,000/month (pilot: ₦400,000)
+- DJ Section LED — ₦500,000/month (pilot: ₦250,000)
+- Lounge LED (x2 screens) — ₦800,000/month each, no discount
+- Each card shows: photo of screen location, plays/day (100), ad duration (15 sec), screen runtime (9 hrs/day)
+- Note: "Pilot pricing — limited time"
+
+**3. Booking Flow**
+- Select screen section → select month(s) → upload ad creative (15 sec video/image, with file spec: format, max size, resolution)
+- Company details form: business name, contact person, phone, email
+- Booking summary + total cost
+- Payment: bank transfer instructions or payment gateway (Paystack/Flutterwave) if budget allows
+- Confirmation page + email
+
+**4. About / Contact**
+- Short company description, resort location/address, WhatsApp/phone contact, social links
+
+## Admin Requirements (backend, even if simple)
+- View list of bookings: company, section, dates, creative file, payment status
+- Mark bookings paid/unpaid
+- Upload/replace ad creative per booking
+- See which slots are booked/available per month (simple calendar or table is fine)
+
+## Design Direction
+- Clean, modern, dark-leaning theme to match a nightlife/lounge resort setting
+- Mobile-first — most bookings will happen from phones
+- Fast load, minimal text, strong visuals of the actual screens in the resort
+
+## Tech Notes
+- Needs: booking form, file upload, admin dashboard, payment integration (optional for v1)
+- Suggested stack: any framework the developer is comfortable with (React/Next.js or plain HTML+backend); no specific requirement, just needs to be maintainable and fast
+- Domain suggestion: rexmedia.ng or similar
+
+## Not Needed for v1
+- User accounts/login for companies (booking form is enough)
+- Analytics dashboard (can add later once pilot data comes in)
+-

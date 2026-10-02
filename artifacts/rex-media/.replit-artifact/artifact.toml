@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Rex Media"
+description = "A booking website for Rex Media's indoor LED advertising screens, with screen pricing, creative uploads, booking confirmations, and a protected admin dashboard."
+version = "1.0.0"
+id = "artifacts/rex-media"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 22350
+
+[services.development]
+run = "pnpm --filter @workspace/rex-media run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/rex-media", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/rex-media/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22350"
+BASE_PATH = "/"
